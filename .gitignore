@@ -1,2 +1,13 @@
 data/*.csv
 data/*.zip
+
+# Large result files
+results/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# CatBoost training artifacts
+catboost_info/

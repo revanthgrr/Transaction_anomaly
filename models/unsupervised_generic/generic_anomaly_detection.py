@@ -79,12 +79,11 @@ def load_generic_data(file_path: str) -> pd.DataFrame:
         print(f'[LOAD] Loading from {file_path}')
         return pd.read_csv(file_path)
     
-    # Search the current directory (Colab root) and data/results directories
+    # Search the current directory (Colab root) and data directory directly
     search_dirs = [
         os.getcwd(),
         PROJECT_ROOT,
-        os.path.join(PROJECT_ROOT, 'data'), 
-        os.path.join(PROJECT_ROOT, 'results')
+        os.path.join(PROJECT_ROOT, 'data')
     ]
     
     # Force add Colab default temporary paths if running in Colab (e.g., from mounted GDrive)

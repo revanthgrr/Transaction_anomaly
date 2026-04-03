@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Dynamic, schema-agnostic rule-based anomaly detection engine with explainable results">
+  <title>Dynamic Rule Engine — Anomaly Detection Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.6/dist/chart.umd.min.js"></script>
+</head>
+<body>
+
+<!-- Loading Overlay -->
+<div class="loading-overlay" id="loadingOverlay">
+  <div class="spinner"></div>
+  <div class="loading-text" id="loadingText">Analyzing dataset...</div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<div class="app-container">
+  <!-- Header -->
+  <header class="app-header">
+    <h1>⚡ Dynamic Rule Engine</h1>
+    <p class="subtitle">Schema-agnostic anomaly detection — upload any dataset, get intelligent rules</p>
+  </header>
+
+  <!-- Upload Section -->
+  <section class="card" id="uploadSection">
+    <div class="upload-zone" id="uploadZone">
+      <span class="upload-icon">📁</span>
+      <p class="upload-text">
+        <strong>Drop your CSV or JSON file here</strong><br>
+        or click to browse · Any schema, any domain
+      </p>
+      <input type="file" id="fileInput" accept=".csv,.json,.tsv">
+    </div>
+  </section>
+
+  <!-- Results (hidden until upload) -->
+  <div class="results-section" id="resultsSection">
+
+    <!-- Summary Stats -->
+    <section class="stats-grid" id="statsGrid">
+      <div class="stat-card">
+        <div class="stat-value" id="statRows">—</div>
+        <div class="stat-label">Total Records</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="statAnomalies">—</div>
+        <div class="stat-label">Anomalies Detected</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="statRate">—</div>
+        <div class="stat-label">Anomaly Rate</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="statRules">—</div>
+        <div class="stat-label">Rules Evaluated</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="statThreshold">—</div>
+        <div class="stat-label">Score Threshold</div>
+      </div>
+    </section>
+
+    <!-- Tabs -->
+    <div class="tabs" id="mainTabs">
+      <button class="tab-btn active" data-tab="tab-profile">📊 Data Profile</button>
+      <button class="tab-btn" data-tab="tab-rules">⚙️ Generated Rules</button>
+      <button class="tab-btn" data-tab="tab-results">🔍 Flagged Records</button>
+      <button class="tab-btn" data-tab="tab-charts">📈 Analytics</button>
+    </div>
+
+    <!-- Tab: Data Profile -->
+    <div class="tab-content active" id="tab-profile">
+      <div class="card">
+        <div class="card-header">
+          <h2><span class="icon">🧬</span> Auto-Detected Schema</h2>
+          <span style="color:var(--text-secondary);font-size:0.85rem" id="profileFilename"></span>
+        </div>
+        <div class="detected-roles" id="detectedRoles"></div>
+        <div style="margin-top:1.25rem">
+          <h4 style="margin-bottom:0.75rem">Column Profiles</h4>
+          <div class="profile-grid" id="profileGrid"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tab: Rules -->
+    <div class="tab-content" id="tab-rules">
+      <div class="card">
+        <div class="card-header">
+          <h2><span class="icon">⚡</span> Dynamic Rules</h2>
+          <div class="btn-group">
+            <button class="btn btn-secondary btn-sm" onclick="reEvaluateRules()">🔄 Re-evaluate</button>
+            <button class="btn btn-secondary btn-sm" onclick="exportRules()">💾 Export JSON</button>
+          </div>
+        </div>
+        <div id="rulesList"></div>
+      </div>
+    </div>
+
+    <!-- Tab: Results -->
+    <div class="tab-content" id="tab-results">
+      <div class="card">
+        <div class="card-header">
+          <h2><span class="icon">🚨</span> Flagged Anomalies</h2>
+          <div class="btn-group">
+            <div class="filter-bar">
+              <label>
+                <input type="checkbox" id="anomaliesOnlyFilter" checked> Anomalies only
+              </label>
+            </div>
+            <button class="btn btn-secondary btn-sm" onclick="exportFlagged()">📥 Export CSV</button>
+            <button class="btn btn-secondary btn-sm" onclick="exportFull()">📥 Export Full</button>
+          </div>
+        </div>
+        <div class="results-table-wrapper">
+          <table class="results-table" id="resultsTable">
+            <thead id="resultsHead"></thead>
+            <tbody id="resultsBody"></tbody>
+          </table>
+        </div>
+        <div class="pagination" id="pagination"></div>
+      </div>
+    </div>
+
+    <!-- Tab: Charts -->
+    <div class="tab-content" id="tab-charts">
+      <div class="charts-grid">
+        <div class="card">
+          <div class="card-header"><h2><span class="icon">📊</span> Score Distribution</h2></div>
+          <div class="chart-container"><canvas id="scoreChart"></canvas></div>
+        </div>
+        <div class="card">
+          <div class="card-header"><h2><span class="icon">📋</span> Rule Trigger Counts</h2></div>
+          <div class="chart-container"><canvas id="ruleChart"></canvas></div>
+        </div>
+      </div>
+      <div class="card" style="margin-top:1.5rem">
+        <div class="card-header">
+          <h2><span class="icon">🤖</span> ML Integration (Optional)</h2>
+          <div class="btn-group">
+            <button class="btn btn-primary btn-sm" onclick="runML(true, false)">🌲 Run Isolation Forest</button>
+            <button class="btn btn-secondary btn-sm" onclick="runML(false, true)">🚀 Run XGBoost</button>
+          </div>
+        </div>
+        <p style="color:var(--text-secondary);font-size:0.9rem">
+          Optionally run ML models on top of the rule engine for ensemble-style detection.
+          Results will be added as additional score columns.
+        </p>
+        <div id="mlResults" style="margin-top:1rem"></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+/* ═══════════════════════════════════════════════════════════
+   Dashboard JavaScript
+   ═══════════════════════════════════════════════════════════ */
+let sessionId = null;
+let currentPage = 1;
+let scoreChartInstance = null;
+let ruleChartInstance = null;
+let currentRules = [];
+let currentData = null;
+
+// ── Upload ──────────────────────────────────────────────────
+const uploadZone = document.getElementById('uploadZone');
+const fileInput = document.getElementById('fileInput');
+
+['dragenter', 'dragover'].forEach(e => {
+  uploadZone.addEventListener(e, ev => { ev.preventDefault(); uploadZone.classList.add('drag-over'); });
+});
+['dragleave', 'drop'].forEach(e => {
+  uploadZone.addEventListener(e, ev => { ev.preventDefault(); uploadZone.classList.remove('drag-over'); });
+});
+uploadZone.addEventListener('drop', ev => {
+  const file = ev.dataTransfer.files[0];
+  if (file) handleUpload(file);
+});
+fileInput.addEventListener('change', ev => {
+  if (ev.target.files[0]) handleUpload(ev.target.files[0]);
+});
+
+async function handleUpload(file) {
+  showLoading('Analyzing ' + file.name + '...');
+  const formData = new FormData();
+  formData.append('file', file);
+
+  try {
+    const res = await fetch('/api/upload', { method: 'POST', body: formData });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.detail || 'Upload failed');
+    }
+    const data = await res.json();
+    currentData = data;
+    sessionId = data.session_id;
+    currentRules = data.rules || [];
+    renderDashboard(data);
+    showToast('✅ Analysis complete — ' + data.summary.total_anomalies + ' anomalies detected');
+  } catch (err) {
+    showToast('❌ ' + err.message);
+    console.error(err);
+  } finally {
+    hideLoading();
+  }
+}
+
+// ── Render Dashboard ────────────────────────────────────────
+function renderDashboard(data) {
+  const s = data.summary;
+  document.getElementById('statRows').textContent = s.total_rows.toLocaleString();
+  document.getElementById('statAnomalies').textContent = s.total_anomalies.toLocaleString();
+  document.getElementById('statRate').textContent = s.anomaly_rate + '%';
+  document.getElementById('statRules').textContent = s.rules_evaluated;
+  document.getElementById('statThreshold').textContent = s.score_threshold.toFixed(4);
+
+  renderProfile(data.profile, data.filename);
+  renderRules(data.rule_breakdown, data.rules);
+  renderCharts(data.score_distribution, data.rule_breakdown);
+  loadResults();
+
+  document.getElementById('resultsSection').classList.add('visible');
+}
+
+// ── Profile ─────────────────────────────────────────────────
+function renderProfile(profile, filename) {
+  document.getElementById('profileFilename').textContent = filename;
+
+  // Detected roles
+  const rolesDiv = document.getElementById('detectedRoles');
+  rolesDiv.innerHTML = '';
+  const roles = [
+    { label: 'Entity', value: profile.detected_entity, icon: '👤' },
+    { label: 'Amount', value: profile.detected_amount, icon: '💰' },
+    { label: 'Time', value: profile.detected_time, icon: '🕐' },
+    { label: 'Geo', value: profile.detected_geo ? profile.detected_geo.join(', ') : null, icon: '📍' },
+    { label: 'Label', value: profile.detected_label, icon: '🏷️' },
+  ];
+  profile.detected_categories.forEach(c => roles.push({ label: 'Category', value: c, icon: '📂' }));
+
+  roles.forEach(r => {
+    if (r.value) {
+      const chip = document.createElement('div');
+      chip.className = 'role-chip';
+      chip.innerHTML = `${r.icon} <span class="role-label">${r.label}:</span> <span class="role-value">${r.value}</span>`;
+      rolesDiv.appendChild(chip);
+    }
+  });
+
+  // Column grid
+  const grid = document.getElementById('profileGrid');
+  grid.innerHTML = '';
+  profile.columns.forEach(col => {
+    const item = document.createElement('div');
+    item.className = 'profile-item';
+    let badges = `<span class="badge badge-type">${col.dtype}</span>`;
+    if (col.semantic_role) badges += ` <span class="badge badge-role">${col.semantic_role}</span>`;
+    item.innerHTML = `<span class="col-name">${col.name}</span><div class="col-meta">${badges}</div>`;
+    grid.appendChild(item);
+  });
+}
+
+// ── Rules ───────────────────────────────────────────────────
+function renderRules(breakdown, rules) {
+  currentRules = rules;
+  const list = document.getElementById('rulesList');
+  list.innerHTML = '';
+
+  rules.forEach((rule, idx) => {
+    const bk = breakdown.find(b => b.rule_id === rule.rule_id) || {};
+    const count = bk.triggered_count || 0;
+    const sev = rule.severity || 'medium';
+
+    const card = document.createElement('div');
+    card.className = 'rule-card' + (rule.enabled ? '' : ' disabled');
+    card.innerHTML = `
+      <label class="rule-toggle">
+        <input type="checkbox" ${rule.enabled ? 'checked' : ''} data-idx="${idx}" onchange="toggleRule(${idx}, this.checked)">
+        <span class="slider"></span>
+      </label>
+      <div class="rule-info">
+        <div class="rule-id">${rule.rule_id}</div>
+        <div class="rule-desc">${rule.description}</div>
+        <div class="rule-meta">
+          <span class="badge badge-${sev}">${sev}</span>
+          <span>Threshold:</span>
+          <input type="number" class="threshold-input" value="${rule.threshold}" step="any"
+                 data-idx="${idx}" onchange="updateThreshold(${idx}, this.value)">
+          <span>Weight: ${rule.weight}</span>
+        </div>
+      </div>
+      <div class="rule-count">${count.toLocaleString()} hits</div>
+    `;
+    list.appendChild(card);
+  });
+}
+
+function toggleRule(idx, enabled) {
+  currentRules[idx].enabled = enabled;
+}
+
+function updateThreshold(idx, value) {
+  currentRules[idx].threshold = parseFloat(value) || 0;
+}
+
+async function reEvaluateRules() {
+  if (!sessionId) return;
+  showLoading('Re-evaluating with modified rules...');
+  try {
+    const res = await fetch(`/api/rules/${sessionId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ rules: currentRules }),
+    });
+    const data = await res.json();
+    currentData = data;
+    currentRules = data.rules || [];
+    renderDashboard(data);
+    showToast('✅ Re-evaluation complete — ' + data.summary.total_anomalies + ' anomalies');
+  } catch (err) {
+    showToast('❌ ' + err.message);
+  } finally {
+    hideLoading();
+  }
+}
+
+// ── Results Table ───────────────────────────────────────────
+async function loadResults(page = 1) {
+  if (!sessionId) return;
+  currentPage = page;
+  const anomaliesOnly = document.getElementById('anomaliesOnlyFilter').checked;
+
+  try {
+    const res = await fetch(`/api/results/${sessionId}?page=${page}&page_size=50&anomalies_only=${anomaliesOnly}`);
+    const data = await res.json();
+    renderResultsTable(data);
+    renderPagination(data);
+  } catch (err) {
+    console.error(err);
+  }
+}
+
+document.getElementById('anomaliesOnlyFilter').addEventListener('change', () => loadResults(1));
+
+function renderResultsTable(data) {
+  if (!data.rows || data.rows.length === 0) {
+    document.getElementById('resultsHead').innerHTML = '';
+    document.getElementById('resultsBody').innerHTML = '<tr><td style="padding:2rem;text-align:center;color:var(--text-secondary)">No records found</td></tr>';
+    return;
+  }
+
+  // Determine visible columns (hide internal derived features except key ones)
+  const keepCols = [];
+  const firstRow = data.rows[0];
+  const allCols = Object.keys(firstRow);
+  const priorityCols = ['_anomaly_score', '_is_anomaly', '_rules_triggered_count'];
+
+  allCols.forEach(c => {
+    if (c === '_explanations') return;
+    if (c.startsWith('_') && !priorityCols.includes(c)) return;
+    keepCols.push(c);
+  });
+
+  // Always push score cols to end
+  const displayCols = keepCols.filter(c => !priorityCols.includes(c));
+  priorityCols.forEach(c => { if (allCols.includes(c)) displayCols.push(c); });
+  if (allCols.includes('_explanations')) displayCols.push('_explanations');
+
+  // Header
+  const thead = document.getElementById('resultsHead');
+  thead.innerHTML = '<tr>' + displayCols.map(c => {
+    const label = c.replace(/^_/, '').replace(/_/g, ' ');
+    return `<th>${label}</th>`;
+  }).join('') + '</tr>';
+
+  // Body
+  const tbody = document.getElementById('resultsBody');
+  tbody.innerHTML = '';
+  data.rows.forEach(row => {
+    const tr = document.createElement('tr');
+    displayCols.forEach(col => {
+      const td = document.createElement('td');
+      if (col === '_anomaly_score') {
+        const score = row[col] || 0;
+        const width = Math.round(score * 100);
+        const color = score > 0.5 ? 'var(--danger)' : score > 0.25 ? 'var(--warning)' : 'var(--success)';
+        td.className = 'score-cell';
+        td.innerHTML = `<span class="score-bar" style="width:${width}px;background:${color}"></span>${score.toFixed(4)}`;
+      } else if (col === '_explanations') {
+        td.className = 'explanation-cell';
+        const expls = row[col] || [];
+        if (expls.length > 0) {
+          td.innerHTML = expls.map(e =>
+            `<div style="margin-bottom:4px">• <strong style="color:var(--severity-${e.severity})">[${e.severity}]</strong> ${e.reason}</div>`
+          ).join('');
+        } else {
+          td.textContent = '—';
+        }
+      } else if (col === '_is_anomaly') {
+        td.innerHTML = row[col] ? '<span style="color:var(--danger);font-weight:700">⚠ YES</span>' : '<span style="color:var(--success)">✓ No</span>';
+      } else {
+        const val = row[col];
+        td.textContent = val === null || val === undefined ? '—' : (typeof val === 'number' ? (Number.isInteger(val) ? val : val.toFixed(4)) : val);
+      }
+      tr.appendChild(td);
+    });
+    tbody.appendChild(tr);
+  });
+}
+
+function renderPagination(data) {
+  const div = document.getElementById('pagination');
+  if (data.total_pages <= 1) { div.innerHTML = ''; return; }
+  div.innerHTML = `
+    <button ${data.page <= 1 ? 'disabled' : ''} onclick="loadResults(${data.page - 1})">← Prev</button>
+    <span class="page-info">Page ${data.page} of ${data.total_pages} (${data.total.toLocaleString()} records)</span>
+    <button ${data.page >= data.total_pages ? 'disabled' : ''} onclick="loadResults(${data.page + 1})">Next →</button>
+  `;
+}
+
+// ── Charts ──────────────────────────────────────────────────
+function renderCharts(scoreDist, ruleBreakdown) {
+  // Score Distribution
+  if (scoreChartInstance) scoreChartInstance.destroy();
+  const scoreCtx = document.getElementById('scoreChart').getContext('2d');
+  scoreChartInstance = new Chart(scoreCtx, {
+    type: 'bar',
+    data: {
+      labels: scoreDist.labels,
+      datasets: [{
+        label: 'Records',
+        data: scoreDist.values,
+        backgroundColor: scoreDist.values.map((_, i) => {
+          const t = i / scoreDist.values.length;
+          return t < 0.5 ? `rgba(52, 211, 153, ${0.4 + t})` :
+                 t < 0.75 ? `rgba(251, 191, 36, ${0.4 + t * 0.4})` :
+                 `rgba(239, 68, 68, ${0.5 + t * 0.3})`;
+        }),
+        borderRadius: 4,
+        borderSkipped: false,
+      }],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        title: { display: false },
+      },
+      scales: {
+        x: { ticks: { color: '#8888aa', font: { size: 9 } }, grid: { color: 'rgba(255,255,255,0.04)' } },
+        y: { ticks: { color: '#8888aa' }, grid: { color: 'rgba(255,255,255,0.04)' } },
+      },
+    },
+  });
+
+  // Rule Breakdown
+  if (ruleChartInstance) ruleChartInstance.destroy();
+  const ruleCtx = document.getElementById('ruleChart').getContext('2d');
+  const sortedRules = [...ruleBreakdown].sort((a, b) => b.triggered_count - a.triggered_count).slice(0, 15);
+  const sevColors = { low: '#34d399', medium: '#fbbf24', high: '#fb923c', critical: '#ef4444' };
+  ruleChartInstance = new Chart(ruleCtx, {
+    type: 'bar',
+    data: {
+      labels: sortedRules.map(r => r.rule_id),
+      datasets: [{
+        label: 'Triggers',
+        data: sortedRules.map(r => r.triggered_count),
+        backgroundColor: sortedRules.map(r => sevColors[r.severity] || '#7c6aff'),
+        borderRadius: 4,
+        borderSkipped: false,
+      }],
+    },
+    options: {
+      indexAxis: 'y',
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+      },
+      scales: {
+        x: { ticks: { color: '#8888aa' }, grid: { color: 'rgba(255,255,255,0.04)' } },
+        y: { ticks: { color: '#8888aa', font: { family: "'JetBrains Mono'", size: 10 } }, grid: { display: false } },
+      },
+    },
+  });
+}
+
+// ── ML Integration ──────────────────────────────────────────
+async function runML(iforest, xgboost) {
+  if (!sessionId) return;
+  showLoading('Running ML models...');
+  try {
+    const res = await fetch(`/api/ml/${sessionId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ iforest, xgboost }),
+    });
+    const data = await res.json();
+    const div = document.getElementById('mlResults');
+    let html = '';
+    for (const [name, info] of Object.entries(data.ml_results)) {
+      html += `<div class="stat-card" style="display:inline-block;margin:0.5rem;min-width:200px">
+        <div class="stat-value">${info.flagged}</div>
+        <div class="stat-label">${name.replace('_ml_', '').replace('_', ' ')} flagged</div>
+      </div>`;
+    }
+    div.innerHTML = html;
+    showToast('✅ ML models complete');
+  } catch (err) {
+    showToast('❌ ' + err.message);
+  } finally {
+    hideLoading();
+  }
+}
+
+// ── Export ───────────────────────────────────────────────────
+function exportFlagged() {
+  if (sessionId) window.location.href = `/api/export/${sessionId}?kind=flagged`;
+}
+function exportFull() {
+  if (sessionId) window.location.href = `/api/export/${sessionId}?kind=full`;
+}
+function exportRules() {
+  if (sessionId) window.location.href = `/api/export/${sessionId}?kind=rules`;
+}
+
+// ── Tabs ────────────────────────────────────────────────────
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById(btn.dataset.tab).classList.add('active');
+  });
+});
+
+// ── UI Helpers ──────────────────────────────────────────────
+function showLoading(text) {
+  document.getElementById('loadingText').textContent = text || 'Processing...';
+  document.getElementById('loadingOverlay').classList.add('active');
+}
+function hideLoading() {
+  document.getElementById('loadingOverlay').classList.remove('active');
+}
+function showToast(msg) {
+  const toast = document.getElementById('toast');
+  toast.textContent = msg;
+  toast.classList.add('show');
+  setTimeout(() => toast.classList.remove('show'), 4000);
+}
+</script>
+</body>
+</html>

@@ -1,4 +1,16 @@
 # -*- coding: utf-8 -*-
+# ---
+# jupyter:
+#   jupytext:
+#     cell_metadata_filter: -all
+#     formats: ipynb,py:percent
+#     text_representation:
+#       extension: .py
+#       format_name: percent
+#       format_version: '1.3'
+#       jupytext_version: 1.19.1
+# ---
+
 # %% [markdown]
 # # XGBoost-Based Transaction Anomaly Detection
 #
@@ -41,9 +53,25 @@ warnings.filterwarnings('ignore')
 # ## 1. Configuration
 
 # %%
-FILE_PATH = ''  # <-- Set your CSV file path here, e.g. 'transactions.csv'
-# If FILE_PATH is empty the script will try to use the Kaggle dataset via
-# kagglehub (same dataset used in fi.py).
+def get_project_root():
+    dir_path = os.path.dirname(os.path.abspath(__file__)) if '__file__' in globals() else os.getcwd()
+    
+    current_dir = dir_path
+    while True:
+        if os.path.isdir(os.path.join(current_dir, 'data')):
+            return current_dir
+        parent_dir = os.path.dirname(current_dir)
+        if parent_dir == current_dir:
+            break
+        current_dir = parent_dir
+        
+    # Fallback to current working directory (e.g. /content in Colab)
+    return dir_path
+
+PROJECT_ROOT = get_project_root()
+# Set FILE_PATH to analyze an arbitrary CSV. 
+# If empty, the script will attempt to find a local CSV for demonstration.
+FILE_PATH = os.environ.get("DATA_FILE", "")
 
 # %% [markdown]
 # ## 2. Load Data
@@ -53,17 +81,44 @@ def load_data(file_path: str) -> pd.DataFrame:
     """Load and return transaction data from a CSV file or Kaggle."""
     if file_path and os.path.isfile(file_path):
         print(f'[LOAD] Loading data from: {file_path}')
-        df = pd.read_csv(file_path)
-    else:
-        print('[LOAD] FILE_PATH not set or not found -- downloading Kaggle dataset ...')
-        import kagglehub
-        path = kagglehub.dataset_download('kartik2112/fraud-detection')
-        csv_files = [f for f in os.listdir(path) if f.endswith('.csv')]
-        print('   Files found:', csv_files)
-        df = pd.read_csv(os.path.join(path, csv_files[0]))
+        return pd.read_csv(file_path)
+    
+    # Search the current directory (Colab root) and data directory directly
+    search_dirs = [
+        os.getcwd(),
+        PROJECT_ROOT,
+        os.path.join(PROJECT_ROOT, 'data')
+    ]
+    
+    # Force add Colab default temporary paths if running in Colab
+    if os.path.exists('/content'):
+        search_dirs.extend(['/content', '/content/data'])
+        
+    search_dirs = list(set(search_dirs))
+    
+    csv_files = []
+    for d in search_dirs:
+        if os.path.isdir(d):
+            # Ignore Colab's default sample_data
+            csv_files.extend([os.path.join(d, f) for f in os.listdir(d) 
+                              if f.lower().endswith('.csv') and 'sample_data' not in d])
+    
+    csv_files = list(set(csv_files))
+    
+    if len(csv_files) > 0:
+        # Default to the largest one for XGBoost (usually the full dataset)
+        chosen_csv = sorted(csv_files, key=os.path.getsize, reverse=True)[0]
+        print(f'[LOAD] FILE_PATH empty. Falling back to CSV: {chosen_csv}')
+        return pd.read_csv(chosen_csv)
+        
+    print('[LOAD] No local CSV found -- downloading Kaggle dataset ...')
+    import kagglehub
+    path = kagglehub.dataset_download('kartik2112/fraud-detection')
+    csv_files = [f for f in os.listdir(path) if f.lower().endswith('.csv')]
+    print('   Files found:', csv_files)
+    df = pd.read_csv(os.path.join(path, csv_files[0]))
 
     print(f'   Shape : {df.shape}')
-    print(f'   Columns: {list(df.columns)}')
     return df
 
 # %%
@@ -439,8 +494,7 @@ def plot_results(model, df, feature_names, metrics):
     ax6.invert_yaxis()
 
     plt.tight_layout()
-    base_dir = os.path.dirname(os.path.abspath(__file__)) if '__file__' in globals() else os.getcwd()
-    _out_dir = os.path.join(base_dir, '../../results')
+    _out_dir = os.path.join(PROJECT_ROOT, 'results')
     os.makedirs(_out_dir, exist_ok=True)
     plt.savefig(os.path.join(_out_dir, 'xgboost_results.png'), dpi=150)
     plt.show()
@@ -455,8 +509,7 @@ plot_results(model, df, feature_names, metrics)
 # %%
 def save_results(df: pd.DataFrame):
     """Save flagged transactions to CSV."""
-    base_dir = os.path.dirname(os.path.abspath(__file__)) if '__file__' in globals() else os.getcwd()
-    out_dir = os.path.join(base_dir, '../../results')
+    out_dir = os.path.join(PROJECT_ROOT, 'results')
     os.makedirs(out_dir, exist_ok=True)
 
     # Full results
